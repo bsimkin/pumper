@@ -112,17 +112,9 @@ void loop()
   // ПРОФИЛЬ 2
   p[1].vStages[0] = 60; // давление
   p[1].vStages[1] = 33;
-  p[1].vStages[2] = 60;
-  p[1].vStages[3] = 33;
-  p[1].vStages[4] = 60;
-  p[1].vStages[5] = 33;
 
   p[1].vStagesTime[0] = 5; // время в минутах
   p[1].vStagesTime[1] = 30;
-  p[1].vStagesTime[2] = 5;
-  p[1].vStagesTime[3] = 30;
-  p[1].vStagesTime[4] = 5;
-  p[1].vStagesTime[5] = 30;
 
   p[1].gistVac = 5; // разница давлений
   p[1].pTime = 20;  // время удержания давления в минутах
