@@ -4,6 +4,7 @@ typedef struct
   float vStagesTime[5]; // minutes
   int gistVac;          // pressure delta
   float pTime;          // minutes
+  int cycles;
 } ProfileStruct;
 
 int systemPressurePin = A2;
@@ -106,16 +107,26 @@ void loop()
 
   p[0].gistVac = 5; // разница давлений
   p[0].pTime = 40;  // время удержания давления в минутах
+  p[0].cycles = 1;  // количество циклов
 
   // ПРОФИЛЬ 2
   p[1].vStages[0] = 60; // давление
   p[1].vStages[1] = 33;
+  p[1].vStages[2] = 60;
+  p[1].vStages[3] = 33;
+  p[1].vStages[4] = 60;
+  p[1].vStages[5] = 33;
 
   p[1].vStagesTime[0] = 5; // время в минутах
   p[1].vStagesTime[1] = 30;
+  p[1].vStagesTime[2] = 5;
+  p[1].vStagesTime[3] = 30;
+  p[1].vStagesTime[4] = 5;
+  p[1].vStagesTime[5] = 30;
 
   p[1].gistVac = 5; // разница давлений
   p[1].pTime = 20;  // время удержания давления в минутах
+  p[1].cycles = 1;  // количество циклов
 
   while (!start)
   {
@@ -126,15 +137,7 @@ void loop()
       profile = p[0];
       digitalWrite(pr1, HIGH);
 
-      // проветриваем и всё закрываем
-
-      OpenVent(outVentOpenPin);
-      CloseVent(outVentClosePin);
-      CloseVent(vacuumVentClosePin);
-      CloseVent(pressureVentClosePin);
-
       start = true;
-
       Serial.print("[START] PROFILE: 1\n");
     }
     if (digitalRead(tumblerDownPin) == 0)
@@ -142,16 +145,8 @@ void loop()
       profile = p[1];
       digitalWrite(pr2, HIGH);
 
-      Serial.print("[START] PROFILE: 2\n");
-
-      // проветриваем и всё закрываем
-
-      OpenVent(outVentOpenPin);
-      CloseVent(outVentClosePin);
-      CloseVent(vacuumVentClosePin);
-      CloseVent(pressureVentClosePin);
-
       start = true;
+      Serial.print("[START] PROFILE: 2\n");
     }
     Serial.print("----\n");
 
@@ -159,134 +154,138 @@ void loop()
   }
   while (start)
   {
-    bool vReady = false;
-
-    // 1. Держим давление каждой стадии
-    while (!vReady)
+    for (int c = 0; c < profile.cycles; c++)
     {
-      if (!vacuumVentOpened)
-      {
-
-        Serial.print("[VACCUM] START OPEN vaccum vent \n");
-        OpenVent(vacuumVentOpenPin);
-        vacuumVentOpened = true;
-      }
-
-      if (!vaccumPumpOn)
-      {
-        Serial.print("[VACCUM] START TURN ON vaccum pump \n");
-        digitalWrite(vacuumPumpPin, LOW);
-        vaccumPumpOn = true;
-      }
-      // посчитать время всех стадий
-      for (int i = 0; i < sizeof profile.vStages / sizeof profile.vStages[0]; i++)
-      {
-        bool stageReady = false;
-        unsigned int vTimer = millis() / 1000;
-        while (!stageReady)
-        {
-
-          delay(1000); // ждём секунду, чтобы не сильно засирать логи
-
-          int sPressure = profile.vStages[i];
-          int currentSystemPressure = analogRead(systemPressurePin);
-
-          Serial.print("[VACCUM] STAGE " + String(i) + " TIME LEFT " + String((vTimer + profile.vStagesTime[i] * 60) - millis() / 1000) + "s Sys: " + String(currentSystemPressure) + " Stage: " + String(sPressure) + "\n");
-          if (currentSystemPressure > sPressure + profile.gistVac)
-          {
-            if (!vaccumPumpOn)
-            {
-              Serial.print("[VACCUM] STAGE " + String(i) + " TURN ON vaccum pump \n");
-              digitalWrite(vacuumPumpPin, LOW);
-              vaccumPumpOn = true;
-            }
-          }
-
-          if (analogRead(systemPressurePin) <= sPressure)
-          {
-            if (vaccumPumpOn)
-            {
-
-              Serial.print("[VACCUM] STAGE " + String(i) + " TURN OFF vaccum pump \n");
-              digitalWrite(vacuumPumpPin, HIGH);
-              vaccumPumpOn = false;
-            }
-          }
-
-          if ((vTimer + profile.vStagesTime[i] * 60) < millis() / 1000)
-          {
-            stageReady = true;
-            Serial.print("[VACCUM] STAGE END: Sys: " + String(currentSystemPressure) + "\n");
-          }
-        }
-      }
-
-      vReady = true;
-      Serial.print("[VACCUM] END \n");
-      Serial.print("[VACCUM] TURN OFF vaccum pump \n");
-      digitalWrite(vacuumPumpPin, HIGH);
-      vaccumPumpOn = false;
-
-      if (vacuumVentOpened)
-      {
-
-        Serial.print("[VACCUM] CLOSE vaccum vent \n");
-        CloseVent(vacuumVentClosePin);
-        vacuumVentOpened = false;
-      }
-
-      Serial.print("[DISCHARGE] OPEN OUT VENT \n");
       OpenVent(outVentOpenPin);
-
-      Serial.print("[DISCHARGE] CLOSE OUT VENT \n");
       CloseVent(outVentClosePin);
-    }
+      CloseVent(vacuumVentClosePin);
+      CloseVent(pressureVentClosePin);
 
-    // 2. поддержание давления на profile.pTime
+      bool vReady = false;
 
-    unsigned long pTimer = millis() / 1000;
-    bool pReady = false;
-    while (!pReady)
-    {
-      if (!pressureVentOpened)
+      // 1. Держим давление каждой стадии
+      while (!vReady)
       {
-
-        Serial.print("[PRESSURE] OPEN PRESSURE VENT \n");
-        OpenVent(pressureVentOpenPin);
-        pressureVentOpened = true;
-      }
-      int currentSystemPressure = analogRead(systemPressurePin);
-
-      Serial.print("[PRESSURE] TIME LEFT " + String((pTimer + profile.pTime * 60) - millis() / 1000) + "s Sys: " + String(currentSystemPressure) + "\n");
-      if ((pTimer + profile.pTime * 60) < millis() / 1000)
-      {
-        pReady = true;
-        Serial.print("[PRESSURE] END \n");
-        if (pressureVentOpened)
+        if (!vacuumVentOpened)
         {
 
-          Serial.print("[PRESSURE] CLOSE PRESSURE VENT \n");
-          CloseVent(pressureVentClosePin);
-          pressureVentOpened = false;
+          Serial.print("[VACCUM] START OPEN vaccum vent \n");
+          OpenVent(vacuumVentOpenPin);
+          vacuumVentOpened = true;
+        }
+
+        if (!vaccumPumpOn)
+        {
+          Serial.print("[VACCUM] START TURN ON vaccum pump \n");
+          digitalWrite(vacuumPumpPin, LOW);
+          vaccumPumpOn = true;
+        }
+        // посчитать время всех стадий
+        for (int i = 0; i < sizeof profile.vStages / sizeof profile.vStages[0]; i++)
+        {
+          bool stageReady = false;
+          unsigned int vTimer = millis() / 1000;
+          while (!stageReady)
+          {
+
+            delay(1000); // ждём секунду, чтобы не сильно засирать логи
+
+            int sPressure = profile.vStages[i];
+            int currentSystemPressure = analogRead(systemPressurePin);
+
+            Serial.print("[VACCUM] STAGE " + String(i) + " TIME LEFT " + String((vTimer + profile.vStagesTime[i] * 60) - millis() / 1000) + "s Sys: " + String(currentSystemPressure) + " Stage: " + String(sPressure) + "\n");
+            if (currentSystemPressure > sPressure + profile.gistVac)
+            {
+              if (!vaccumPumpOn)
+              {
+                Serial.print("[VACCUM] STAGE " + String(i) + " TURN ON vaccum pump \n");
+                digitalWrite(vacuumPumpPin, LOW);
+                vaccumPumpOn = true;
+              }
+            }
+
+            if (analogRead(systemPressurePin) <= sPressure)
+            {
+              if (vaccumPumpOn)
+              {
+
+                Serial.print("[VACCUM] STAGE " + String(i) + " TURN OFF vaccum pump \n");
+                digitalWrite(vacuumPumpPin, HIGH);
+                vaccumPumpOn = false;
+              }
+            }
+
+            if ((vTimer + profile.vStagesTime[i] * 60) < millis() / 1000)
+            {
+              stageReady = true;
+              Serial.print("[VACCUM] STAGE END: Sys: " + String(currentSystemPressure) + "\n");
+            }
+          }
+        }
+
+        vReady = true;
+        Serial.print("[VACCUM] END \n");
+        Serial.print("[VACCUM] TURN OFF vaccum pump \n");
+        digitalWrite(vacuumPumpPin, HIGH);
+        vaccumPumpOn = false;
+
+        if (vacuumVentOpened)
+        {
+
+          Serial.print("[VACCUM] CLOSE vaccum vent \n");
+          CloseVent(vacuumVentClosePin);
+          vacuumVentOpened = false;
+        }
+
+        Serial.print("[DISCHARGE] OPEN OUT VENT \n");
+        OpenVent(outVentOpenPin);
+
+        Serial.print("[DISCHARGE] CLOSE OUT VENT \n");
+        CloseVent(outVentClosePin);
+      }
+
+      // 2. поддержание давления на profile.pTime
+
+      unsigned long pTimer = millis() / 1000;
+      bool pReady = false;
+      while (!pReady)
+      {
+        if (!pressureVentOpened)
+        {
+
+          Serial.print("[PRESSURE] OPEN PRESSURE VENT \n");
+          OpenVent(pressureVentOpenPin);
+          pressureVentOpened = true;
+        }
+        int currentSystemPressure = analogRead(systemPressurePin);
+
+        Serial.print("[PRESSURE] TIME LEFT " + String((pTimer + profile.pTime * 60) - millis() / 1000) + "s Sys: " + String(currentSystemPressure) + "\n");
+        if ((pTimer + profile.pTime * 60) < millis() / 1000)
+        {
+          pReady = true;
+          Serial.print("[PRESSURE] END \n");
+          if (pressureVentOpened)
+          {
+
+            Serial.print("[PRESSURE] CLOSE PRESSURE VENT \n");
+            CloseVent(pressureVentClosePin);
+            pressureVentOpened = false;
+          }
         }
       }
+
+      // 3. выравние по атмосфере
+
+      Serial.print("[DISCHARGE] OPEN OUT VENT. WAIT 120s FOR DISCHARGE\n");
+      OpenVent(outVentOpenPin, 8); // приоткрываем вентиляцию
+      delay(120000);               // 120 секунд на плавный спуск давления
     }
-
-    // 3. выравние по атмосфере
-
-    Serial.print("[DISCHARGE] OPEN OUT VENT. WAIT 120s FOR DISCHARGE\n");
-    OpenVent(outVentOpenPin, 8); // приоткрываем вентиляцию
-    delay(120000); // 120 секунд на плавный спуск давления
-
-    Serial.print("[DISCHARGE] CLOSE OUT VENT \n");
-
-    CloseVent(outVentClosePin);
-
-    Serial.print("[END] PRESS RESET TO RESTART \n");
 
     start = false;
     end = true;
-
+    CloseVent(outVentClosePin);
+    CloseVent(vacuumVentClosePin);
+    CloseVent(pressureVentClosePin);
     while (end)
     {
       digitalWrite(fin, HIGH);
