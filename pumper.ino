@@ -1,37 +1,35 @@
 typedef struct
 {
-  int vStages[10];       // pressure
+  unsigned int vStages[10]; // pressure
+  unsigned int vStagesCount;
   float vStagesTime[10]; // minutes
-  int gistVac;          // pressure delta
+  unsigned int gistVac;  // pressure delta
   float pTime;          // minutes
-  int cycles;
+  unsigned int cycles;
+  unsigned int ledPin;
 } ProfileStruct;
 
-int systemPressurePin = A2;
-int vacuumPressurePin = A1;
-
-int pr1 = 24;
-int pr2 = 26;
-int fin = 28;
-int statusLedPin = 22;
 
 bool vacuumVentOpened = false;
 bool pressureVentOpened = false;
-
 bool vaccumPumpOn = false;
 
-int outVentOpenPin = 23;
-int outVentClosePin = 25;
-int vacuumVentOpenPin = 27;
-int vacuumVentClosePin = 29;
-int pressureVentOpenPin = 31;
-int pressureVentClosePin = 33;
-int vacuumPumpPin = 35;
+int systemPressurePin = A0;
+int vacuumPumpPin = 3;
+int outVentOpenPin = 4;
+int outVentClosePin = 5;
+int vacuumVentOpenPin = 6;
+int vacuumVentClosePin = 7;
+int pressureVentOpenPin = 8;
+int pressureVentClosePin = 9;
 
-int tumblerUpPin = 50;
-int tumblerDownPin = 52;
+int fin = 13;
+int led1Pin = 11;
+int led2Pin = 12;
+int statusLedPin = 10;
 
-bool start = false;
+int extraPin = 9;
+
 bool end = false;
 
 ProfileStruct profile;
@@ -71,8 +69,8 @@ void setup()
   pinMode(pressureVentClosePin, OUTPUT);
 
   pinMode(statusLedPin, OUTPUT);
-  pinMode(pr1, OUTPUT);
-  pinMode(pr2, OUTPUT);
+  pinMode(led1Pin, OUTPUT);
+  pinMode(led2Pin, OUTPUT);
   pinMode(fin, OUTPUT);
 
   pinMode(vacuumPumpPin, OUTPUT);
@@ -90,67 +88,40 @@ void setup()
 }
 void loop()
 {
-  int profileOrder[] = {0, 0, 1, 1, 1};
+  int profileOrder[] = {0, 1, 0, 1};
 
   ProfileStruct p[10];
 
   // ПРОФИЛЬ 0
-  p[0].vStages[0] = 88; // давление
-  p[0].vStages[1] = 72;
-  p[0].vStages[2] = 60;
-  p[0].vStages[3] = 47;
-  p[0].vStages[4] = 33;
-
-  p[0].vStagesTime[0] = 5; // время в минутах
-  p[0].vStagesTime[1] = 20;
-  p[0].vStagesTime[2] = 30;
-  p[0].vStagesTime[3] = 30;
-  p[0].vStagesTime[4] = 40;
-
-  p[0].gistVac = 5; // разница давлений
-  p[0].pTime = 40;  // время удержания давления в минутах
+  p[0].vStages[0] = 77; // давление
+  p[0].vStages[1] = 70;
+  p[0].vStagesTime[0] = 0.2; // время в минутах
+  p[0].vStagesTime[1] = 0.3;
+  p[0].vStagesCount = 2; // колличество стадий
+  
+  p[0].gistVac = 2; // разница давлений
+  p[0].pTime = 1;  // время удержания давления в минутах
   p[0].cycles = 1;  // количество циклов
+  p[0].ledPin = led1Pin;  // pin диода индикатора профиля
 
   // ПРОФИЛЬ 1
-  p[1].vStages[0] = 60; // давление
-  p[1].vStages[1] = 33;
+  p[1].vStages[0] = 62; // давление
+  p[1].vStagesTime[0] = 1; // время в минутах
+  p[1].vStagesCount = 1; // колличество стадий
 
-  p[1].vStagesTime[0] = 5; // время в минутах
-  p[1].vStagesTime[1] = 30;
-
-  p[1].gistVac = 5; // разница давлений
-  p[1].pTime = 20;  // время удержания давления в минутах
+  p[1].gistVac = 2; // разница давлений
+  p[1].pTime = 1;  // время удержания давления в минутах
   p[1].cycles = 1;  // количество циклов
+  p[1].ledPin = led2Pin;  // pin диода индикатора профиля
 
-  while (!start)
+  while (!end)
   {
-
     digitalWrite(statusLedPin, HIGH);
-    if (digitalRead(tumblerUpPin) == 0)
-    {
-      profile = p[0];
-      digitalWrite(pr1, HIGH);
-
-      start = true;
-      Serial.print("[START] PROFILE: 1\n");
-    }
-    if (digitalRead(tumblerDownPin) == 0)
-    {
-      profile = p[1];
-      digitalWrite(pr2, HIGH);
-
-      start = true;
-      Serial.print("[START] PROFILE: 2\n");
-    }
-    Serial.print("----\n");
-
-    delay(2000);
-  }
-  while (start)
-  {
-    for (int i = 0; i < sizeof profileOrder; i++)
+    for (int i = 0; i < sizeof profileOrder / sizeof(profileOrder[0]); i++)
     {
       profile = p[profileOrder[i]];
+      Serial.print("[START] PROFILE : " + String(profileOrder[i]) + "\n");
+      digitalWrite(profile.ledPin, HIGH);
       for (int c = 0; c < profile.cycles; c++)
       {
         OpenVent(outVentOpenPin);
@@ -177,16 +148,13 @@ void loop()
             digitalWrite(vacuumPumpPin, LOW);
             vaccumPumpOn = true;
           }
-          // посчитать время всех стадий
-          for (int i = 0; i < sizeof profile.vStages / sizeof profile.vStages[0]; i++)
+
+          for (int i = 0; i < profile.vStagesCount; i++)
           {
             bool stageReady = false;
             unsigned int vTimer = millis() / 1000;
             while (!stageReady)
             {
-
-              delay(1000); // ждём секунду, чтобы не сильно засирать логи
-
               int sPressure = profile.vStages[i];
               int currentSystemPressure = analogRead(systemPressurePin);
 
@@ -276,13 +244,14 @@ void loop()
         Serial.print("[DISCHARGE] OPEN OUT VENT. WAIT 120s FOR DISCHARGE\n");
         OpenVent(outVentOpenPin, 8); // приоткрываем вентиляцию
         delay(120000);               // 120 секунд на плавный спуск давления
+        digitalWrite(profile.ledPin, LOW);
       }
     }
-    start = false;
     end = true;
     CloseVent(outVentClosePin);
     CloseVent(vacuumVentClosePin);
     CloseVent(pressureVentClosePin);
+
     while (end)
     {
       digitalWrite(fin, HIGH);
